@@ -193,7 +193,7 @@ def face_extract():
                 else:
                     img2[start:start + face.shape[0], :, :] = face
 
-                output_file = output_folder / f.name
+                output_file = output_folder / Path("%s_%d%s" % (f.stem, i, f.suffix))
                 log.info("Saving %s" % (output_file))
 
                 output_img = cv.resize(img2, (IMAGE_HEIGHT, IMAGE_WIDTH), interpolation=cv.INTER_LINEAR)
