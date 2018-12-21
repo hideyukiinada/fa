@@ -2,7 +2,7 @@
 """
 Extracts a face from a photo, scale to a square format, marks facial landmarks and save in a directory.
 
-You can specify one or more of marking for landmarks.
+You can specify one or more of markings for landmarks.
 
 
 Credit
@@ -93,7 +93,7 @@ def face_extract():
                 prev_point = None
 
                 for j in range(NUM_LANDMARKS):
-                    # Note that x, y are defined on the coordinate for the entire face and not the bounding box.
+                    # Note that x, y are defined on the coordinate for the entire image and not the face bounding box.
                     x = shape.part(j).x
                     y = shape.part(j).y
                     log.info("[%d] x: %d, y: %d" % (j, x, y))
