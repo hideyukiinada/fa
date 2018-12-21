@@ -1,0 +1,196 @@
+#!/usr/bin/env python
+"""
+Extracts a face from a photo, scale to a square format, marks facial landmarks and save in a directory.
+
+You can specify one or more of marking for landmarks.
+
+
+Credit
+-------
+This file is based on the public domain source code downloaded from below URL:
+http://dlib.net/face_landmark_detection.py.html
+
+References
+----------
+cv.circle method
+https://docs.opencv.org/3.1.0/dc/da5/tutorial_py_drawing_functions.html
+https://docs.opencv.org/3.0-beta/modules/imgproc/doc/drawing_functions.html#circle
+
+OpenCV font list
+https://docs.opencv.org/3.1.0/d0/de1/group__core.html#ga0f9314ea6e35f99bb23f29567fc16e11
+
+__author__ = "Hide Inada"
+__copyright__ = "Copyright 2018, Hide Inada"
+__license__ = "The MIT License"
+__email__ = "hideyuki@gmail.com"
+"""
+
+import sys
+import os
+import logging
+from pathlib import Path
+
+import dlib
+import cv2 as cv
+import numpy as np
+
+FACE_IMAGE_PATH = "../../images"
+IMAGE_OUTPUT_PATH = "../../images_output"
+PREDICTOR_PATH = "../../dlib_face_models/shape_predictor_68_face_landmarks.dat"
+
+IMAGE_FILE_EXTENSIONS = ["*.jpg", "*.jpeg", "*.png"]
+IMAGE_HEIGHT = 512
+IMAGE_WIDTH = 512
+IMAGE_CHANNELS = 3
+
+NUM_LANDMARKS = 68
+
+# Landmarker marking types
+MARKER_TYPE_LINE = 1
+MARKER_TYPE_NUMBER = 2
+MARKER_TYPE_CIRCLE = 4
+
+MARKER_COLOR = (0, 0, 255)  # OpenCV uses B, G, R so this is red
+
+log = logging.getLogger(__name__)
+logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
+
+
+def face_extract():
+    """
+    Extract one or more faces from a photo using dlib.
+    """
+    detector = dlib.get_frontal_face_detector()
+    predictor = dlib.shape_predictor(PREDICTOR_PATH)
+
+    faces_folder = Path(FACE_IMAGE_PATH)
+    output_folder = Path(IMAGE_OUTPUT_PATH)
+
+    marker_type = MARKER_TYPE_CIRCLE | MARKER_TYPE_LINE
+
+    for e in IMAGE_FILE_EXTENSIONS:
+        for f in faces_folder.glob(e):
+
+            log.info("Processing file: %s" % (f))
+            img = cv.imread(str(f))
+
+            detected_faces = detector(img, 1)  # 1 to upsample the image 1 time
+            log.info("Number of faces detected: %d" % (len(detected_faces)))
+
+            for i, pos in enumerate(detected_faces):
+                log.info("Face ID: %d: Left: %d Top: %d Right: %d Bottom: %d" % (
+                    i, pos.left(), pos.top(), pos.right(), pos.bottom()))
+
+                top = max(0, pos.top())
+                left = max(0, pos.left())
+                bottom = max(0, pos.bottom())
+                right = max(0, pos.right())
+
+                height = bottom - top
+                width = right - left
+
+                shape = predictor(img, pos)
+                prev_point = None
+
+                for j in range(NUM_LANDMARKS):
+                    # Note that x, y are defined on the coordinate for the entire face and not the bounding box.
+                    x = shape.part(j).x
+                    y = shape.part(j).y
+                    log.info("[%d] x: %d, y: %d" % (j, x, y))
+
+                    if marker_type & MARKER_TYPE_CIRCLE:
+                        cv.circle(img,  # target image
+                                  (x, y),  # center
+                                  2,  # radius
+                                  MARKER_COLOR,  # color
+                                  1)  # thickness (positive to draw a hollow circle)
+
+                    if marker_type & MARKER_TYPE_LINE:
+                        pt1 = prev_point
+                        pt2 = (x, y)
+
+                        if j not in (
+                                0,  # right face cheek top
+                                17,  # right eyebrow outer tip
+                                22,  # left eyebrow inner tip
+                                27,  # nose bridge top
+                                31,  # right nostril
+                                36,  # right eye outer tip
+                                42,  # left eye inner tip
+                                48  # right mouse tip
+                        ):
+                            cv.line(img,
+                                    pt1,  # First point
+                                    pt2,  # Second point
+                                    MARKER_COLOR,  # color
+                                    1,  # thickness
+                                    cv.LINE_AA)  # line type set to anti-aliased line
+
+                        prev_point = (x, y)
+
+                    if marker_type & MARKER_TYPE_NUMBER:
+                        cv.putText(img,
+                                   str(j),
+                                   (x, y),  # center
+                                   cv.FONT_HERSHEY_SIMPLEX,  # font
+                                   0.2,  # font scale
+                                   MARKER_COLOR,  # color
+                                   1,  # thickness
+                                   cv.LINE_AA)
+
+                # Draw extra lines
+
+                if marker_type & MARKER_TYPE_LINE:
+                    pairs = [
+                        (36, 41),  # left eye outer tip to left eye bottom
+                        (42, 47),  # right eye inner tip to right eye bottom
+                        (30, 33),  # nose tip to nose bottom center
+                        (30, 31),  # nose tip to nose right bottom
+                        (30, 35)  # nose tip to nose left bottom
+                    ]
+
+                    for pair in pairs:
+                        pt1 = (shape.part(pair[0]).x, shape.part(pair[0]).y)
+                        pt2 = (shape.part(pair[1]).x, shape.part(pair[1]).y)
+
+                        cv.line(img,
+                                pt1,  # First point
+                                pt2,  # Second point
+                                MARKER_COLOR,  # color
+                                1,  # thickness
+                                cv.LINE_AA)
+
+                face = img[top:bottom, left:right]
+
+                if height > width:
+                    gap = height - width
+                    edge = height
+                else:
+                    gap = width - height
+                    edge = width
+
+                # Allocate a new buffer filled with white
+                img2 = np.full((edge, edge, face.shape[2]), 255.0)
+
+                start = gap // 2
+
+                if height > width:
+                    img2[:, start:start + face.shape[1], :] = face
+                else:
+                    img2[start:start + face.shape[0], :, :] = face
+
+                output_file = output_folder / f.name
+                log.info("Saving %s" % (output_file))
+
+                output_img = cv.resize(img2, (IMAGE_HEIGHT, IMAGE_WIDTH), interpolation=cv.INTER_LINEAR)
+
+                cv.imwrite(str(output_file), output_img)
+
+
+def main():
+    """Defines an application's main functionality"""
+    face_extract()
+
+
+if __name__ == "__main__":
+    main()
