@@ -43,6 +43,7 @@ IMAGE_HEIGHT = 512
 IMAGE_WIDTH = 512
 IMAGE_CHANNELS = 3
 
+MARGIN_AROUND_FACE = 0.25 # Face bounding box is extended by this number vertically and horizontally
 NUM_LANDMARKS = 68
 
 # Landmarker marking types
@@ -86,6 +87,19 @@ def face_extract():
                 bottom = max(0, pos.bottom())
                 right = max(0, pos.right())
 
+                height = bottom - top
+                width = right - left
+
+                height_margin = int(height * MARGIN_AROUND_FACE)
+                width_margin = int(width * MARGIN_AROUND_FACE)
+
+                top = max(0, top-height_margin//2)
+                bottom = min(img.shape[0]-1, bottom + height_margin // 2)
+
+                left = max(0, left-width_margin//2)
+                right = min(img.shape[1]-1, right + width_margin // 2)
+
+                # Recalculate height
                 height = bottom - top
                 width = right - left
 
