@@ -1,0 +1,100 @@
+#!/usr/bin/env python
+"""
+Extracts a face from a photo, scale to a square format, and save in a directory using mtcnn.
+
+References
+----------
+https://github.com/ipazc/mtcnn/blob/master/example.py
+
+__author__ = "Hide Inada"
+__copyright__ = "Copyright 2018, Hide Inada"
+__license__ = "The MIT License"
+__email__ = "hideyuki@gmail.com"
+"""
+
+import sys
+import os
+import logging
+from pathlib import Path
+
+from mtcnn.mtcnn import MTCNN
+import cv2 as cv
+import numpy as np
+
+FACE_IMAGE_PATH = "../../images"
+IMAGE_OUTPUT_PATH = "../../images_output"
+IMAGE_FILE_EXTENSIONS = ["*.jpg", "*.jpeg", "*.png"]
+IMAGE_HEIGHT = 512
+IMAGE_WIDTH = 512
+IMAGE_CHANNELS = 3
+
+log = logging.getLogger(__name__)
+logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
+
+
+def face_extract():
+    """
+    Extract one or more faces from a photo using MTCNN.
+    """
+    detector = MTCNN()
+
+    faces_folder = Path(FACE_IMAGE_PATH)
+    output_folder = Path(IMAGE_OUTPUT_PATH)
+
+    for e in IMAGE_FILE_EXTENSIONS:
+        for f in faces_folder.glob(e):
+
+            log.info("Processing file: %s" % (f))
+            img = cv.imread(str(f))
+
+            detected_faces = detector.detect_faces(img)
+            log.info("Number of faces detected: %d" % (len(detected_faces)))
+
+
+            for i, pos in enumerate(detected_faces):
+                pos = detected_faces[i]["box"]
+                log.info("Face ID: %d: Left: %d Top: %d Width: %d Height: %d" % (
+                    i, pos[0], pos[1], pos[2], pos[3]))
+
+                top = max(0, pos[1])
+                left = max(0, pos[0])
+                bottom = max(0, pos[1]+pos[3])
+                right = max(0, pos[0] + pos[2])
+
+                height = bottom - top
+                width = right - left
+
+                face = img[top:bottom, left:right]
+
+                if height > width:
+                    gap = height - width
+                    edge = height
+                else:
+                    gap = width - height
+                    edge = width
+
+                # Allocate a new buffer filled with white
+                img2 = np.full((edge, edge, face.shape[2]), 255.0)
+
+                start = gap // 2
+
+                if height > width:
+                    img2[:, start:start + face.shape[1], :] = face
+                else:
+                    img2[start:start + face.shape[0], :, :] = face
+
+                output_file = output_folder / f.name
+                log.info("Saving %s" % (output_file))
+
+                output_img = cv.resize(img2, (IMAGE_HEIGHT, IMAGE_WIDTH), interpolation=cv.INTER_LINEAR)
+
+                cv.imwrite(str(output_file), output_img)
+
+
+def main():
+    """Defines an application's main functionality"""
+    face_extract()
+
+
+if __name__ == "__main__":
+    main()
