@@ -15,6 +15,7 @@ __email__ = "hideyuki@gmail.com"
 
 import sys
 import os
+import argparse
 import logging
 from pathlib import Path
 
@@ -22,8 +23,14 @@ import dlib
 import cv2 as cv
 import numpy as np
 
-FACE_IMAGE_PATH = "../../images"
-IMAGE_OUTPUT_PATH = "../../images_output"
+parser = argparse.ArgumentParser(description="face_extraction")
+parser.add_argument("--input_dir", default="../../images", type=str, help="Input face images directory")
+parser.add_argument("--output_dir", default="../../images_output", type=str, help="Output directory")
+args = parser.parse_args()
+
+FACE_IMAGE_PATH = args.input_dir
+IMAGE_OUTPUT_PATH = args.output_dir
+
 IMAGE_FILE_EXTENSIONS = ["*.jpg", "*.jpeg", "*.png"]
 IMAGE_HEIGHT = 512
 IMAGE_WIDTH = 512
@@ -40,54 +47,67 @@ def face_extract():
     detector = dlib.get_frontal_face_detector()
 
     faces_folder = Path(FACE_IMAGE_PATH)
+    if faces_folder.exists() is False:
+        raise ValueError("Not found %s" % (faces_folder))
+
     output_folder = Path(IMAGE_OUTPUT_PATH)
+    if output_folder.exists() is False:
+        output_folder.mkdir(parents=True, exist_ok=True)
 
-    for e in IMAGE_FILE_EXTENSIONS:
-        for f in faces_folder.glob(e):
+    dir_list = [d for d in faces_folder.iterdir() if d.is_dir()]
+    dir_list.append(faces_folder)
 
-            log.info("Processing file: %s" % (f))
-            img = cv.imread(str(f))
+    file_no = 0
+    for i, d in enumerate(dir_list):
+        log.info("Scanning %s" % (d))
 
-            detected_faces = detector(img, 1)  # 1 to upsample the image 1 time
-            log.info("Number of faces detected: %d" % (len(detected_faces)))
+        for e in IMAGE_FILE_EXTENSIONS:
+            for f in d.glob(e):
 
-            for i, pos in enumerate(detected_faces):
-                log.info("Face ID: %d: Left: %d Top: %d Right: %d Bottom: %d" % (
-                    i, pos.left(), pos.top(), pos.right(), pos.bottom()))
+                log.info("Processing file: %s" % (f))
+                img = cv.imread(str(f))
 
-                top = max(0, pos.top())
-                left = max(0, pos.left())
-                bottom = max(0, pos.bottom())
-                right = max(0, pos.right())
+                detected_faces = detector(img, 1)  # 1 to upsample the image 1 time
+                log.info("Number of faces detected: %d" % (len(detected_faces)))
 
-                height = bottom - top
-                width = right - left
+                for i, pos in enumerate(detected_faces):
+                    log.info("Face ID: %d: Left: %d Top: %d Right: %d Bottom: %d" % (
+                        i, pos.left(), pos.top(), pos.right(), pos.bottom()))
 
-                face = img[top:bottom, left:right]
+                    face_top = max(0, pos.top())
+                    face_left = max(0, pos.left())
+                    face_bottom = min(img.shape[0] - 1, pos.bottom())
+                    face_right = min(img.shape[1] - 1, pos.right())
 
-                if height > width:
-                    gap = height - width
-                    edge = height
-                else:
-                    gap = width - height
-                    edge = width
+                    face_height = face_bottom - face_top
+                    face_width = face_right - face_left
 
-                # Allocate a new buffer filled with white
-                img2 = np.full((edge, edge, face.shape[2]), 255.0)
+                    face = img[face_top:face_bottom, face_left:face_right]
 
-                start = gap // 2
+                    if face_height > face_width:
+                        gap_w = face_height - face_width
+                        edge = face_height  # pick the longer edge
+                        gap_h = 0
+                    else:
+                        gap_h = face_width - face_height
+                        edge = face_width
+                        gap_w = 0
 
-                if height > width:
-                    img2[:, start:start + face.shape[1], :] = face
-                else:
-                    img2[start:start + face.shape[0], :, :] = face
+                    # Allocate a new buffer filled with white
+                    img2 = np.full((edge, edge, face.shape[2]), 255.0)
 
-                output_file = output_folder / f.name
-                log.info("Saving %s" % (output_file))
+                    img2[
+                    int(np.floor(gap_h / 2)):int(np.floor(gap_h / 2)) + face_height,
+                    int(np.floor(gap_w / 2)):int(np.floor(gap_w / 2)) + face_width,
+                    :] = face
 
-                output_img = cv.resize(img2, (IMAGE_HEIGHT, IMAGE_WIDTH), interpolation=cv.INTER_LINEAR)
+                    file_no += 1
+                    output_file = output_folder / Path(f.stem + "_%d.jpg" % (file_no))
+                    log.info("Saving %s" % (output_file))
 
-                cv.imwrite(str(output_file), output_img)
+                    output_img = cv.resize(img2, (IMAGE_HEIGHT, IMAGE_WIDTH), interpolation=cv.INTER_LINEAR)
+
+                    cv.imwrite(str(output_file), output_img)
 
 
 def main():
